@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Modelo gaussiano de dispersión</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Spectral:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* VOICE: herramienta técnica y didáctica, sobria, para clase y para tamizaje
+   IDEA: hoja de cálculo de un meteorólogo: mapa de la pluma + cálculo paso a paso
+   PICTURE: la pluma viva (perfil y mapa) grande junto a los controles
+   COLOUR and TYPE: blanco, tinta pizarra, naranja de pluma como acento, azul cielo de apoyo; Spectral + Public Sans
+   LAYOUT: controles a la izquierda, resultados arriba, gráficas en pestañas, desarrollo numérico debajo */
+:root{color-scheme:light dark;
+--bg:light-dark(#ffffff,#10161c);--panel:light-dark(#f4f6f8,#18212a);--line:light-dark(#d9dee3,#2c3844);
+--ink:light-dark(#15202b,#e8edf2);--soft:light-dark(#4f5d6b,#a9b6c3);--acc:light-dark(#c2410c,#fb8a4c);
+--sky:light-dark(#1f6fa8,#6cb6ea);--card:light-dark(#ffffff,#141c24)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "Public Sans",system-ui,sans-serif;overflow-x:clip}
+h1,h2{font-family:Spectral,Georgia,serif;font-weight:600;line-height:1.05;text-wrap:balance;margin:0}
+h1{font-size:clamp(30px,4vw,46px)}h2{font-size:28px;margin-bottom:12px}
+.band{padding:clamp(20px,3vw,40px) max(4vw,16px)}
+header.band{padding-bottom:8px}
+header p{margin:8px 0 0;color:var(--soft);max-width:70ch}
+.app{display:grid;grid-template-columns:320px minmax(0,1fr);gap:28px;align-items:start}
+aside{background:var(--panel);border-radius:14px;padding:18px 18px 8px;position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto}
+fieldset{border:0;padding:0;margin:0 0 16px}
+legend{font-weight:700;font-size:15px;margin-bottom:6px;color:var(--sky)}
+label{display:block;font-size:14px;color:var(--soft);margin-top:8px}
+.row{display:flex;justify-content:space-between;gap:8px}
+.row b{color:var(--ink);font-weight:600;white-space:nowrap}
+input[type=range]{width:100%;height:28px;accent-color:var(--acc)}
+input[type=number],select{width:100%;font:16px "Public Sans",sans-serif;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);min-height:44px}
+.seg{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.seg button,.tabs button,.btn{font:600 15px "Public Sans",sans-serif;min-height:44px;padding:0 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+.seg button[aria-pressed=true],.tabs button[aria-selected=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--sky);outline-offset:2px}
+.check{display:flex;gap:8px;align-items:center;color:var(--ink);font-size:15px;min-height:36px}
+.check input{width:20px;height:20px;accent-color:var(--acc)}
+.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}
+.card{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--card)}
+.card small{display:block;color:var(--soft);font-size:13px}
+.card strong{display:block;font:600 clamp(22px,2.6vw,32px)/1.1 Spectral,Georgia,serif;margin-top:4px;white-space:nowrap}
+.card span{font-size:13px;color:var(--soft)}
+.card.big{border-color:var(--acc)}.card.big strong{color:var(--acc)}
+.card.alert{background:light-dark(#fff1ea,#2a1a12);border-color:var(--acc)}
+.tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:10px}
+.tabs button{flex:none}
+.fig{position:relative;min-height:420px;height:min(62vh,520px);border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.fig>svg,.fig>canvas{position:absolute;inset:0;width:100%;height:100%}
+.note{font-size:14px;color:var(--soft);margin:8px 0 0}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:14px;margin-top:8px}
+.legend i{display:inline-block;width:18px;height:4px;border-radius:2px;vertical-align:middle;margin-right:6px}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--bg);font-size:13px;padding:4px 8px;border-radius:6px;white-space:nowrap;display:none}
+.steps{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px;align-items:start}
+.recv{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:12px}
+ol.calc{margin:0;padding-left:22px}
+ol.calc li{margin:0 0 10px}
+ol.calc code{display:block;font:15px/1.45 ui-monospace,Menlo,Consolas,monospace;background:var(--panel);padding:6px 10px;border-radius:6px;margin-top:3px;overflow-wrap:anywhere}
+ol.calc li.res code{background:light-dark(#fff1ea,#2a1a12);color:var(--acc);font-weight:700}
+table{border-collapse:collapse;width:100%;font-size:15px}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.about{max-width:900px}
+.about p,.about li{max-width:75ch}
+math{font-size:1.15em}
+.eq{overflow-x:auto;background:var(--panel);border-radius:10px;padding:16px;margin:10px 0 16px}
+footer{color:var(--soft);font-size:14px}
+@media(max-width:900px){.app{grid-template-columns:minmax(0,1fr)}aside{position:static;max-height:none}.steps{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:600px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.fig{min-height:340px;height:340px}.recv{grid-template-columns:minmax(0,1fr)}table{font-size:13px}}
+@media(prefers-reduced-motion:no-preference){.card strong{transition:color .3s}}
+</style>
+</head>
+<body>
+<header class="band">
+<h1>Modelo gaussiano de dispersión de contaminantes</h1>
+<p>Fuente puntual continua (chimenea), estado estacionario, coeficientes de Briggs y sobreelevación de Briggs. Mueve los controles: todo se recalcula al instante en tu navegador.</p>
+</header>
+
+<div class="band app" style="padding-top:12px">
+<aside aria-label="Parámetros del modelo">
+<fieldset><legend>Casos de ejemplo (hipotéticos)</legend>
+<div class="seg" id="presets">
+<button data-p="ejemplo">Ejemplo de clase</button><button data-p="tarde">Tarde soleada</button><button data-p="noche">Noche estable</button>
+</div></fieldset>
+
+<fieldset><legend>Fuente</legend>
+<label for="Q">Tasa de emisión Q (g/s)</label><input type="number" id="Q" value="50" min="0.01" step="1">
+<label for="hs"><span class="row">Altura de la chimenea <b id="hs_v"></b></span></label><input type="range" id="hs" min="5" max="250" value="40">
+<label class="check"><input type="checkbox" id="rise" checked> Sobreelevación por flotabilidad</label>
+<div id="riseBox">
+<label for="vs"><span class="row">Velocidad de salida <b id="vs_v"></b></span></label><input type="range" id="vs" min="1" max="30" step="0.5" value="12">
+<label for="d"><span class="row">Diámetro interno <b id="d_v"></b></span></label><input type="range" id="d" min="0.2" max="6" step="0.1" value="1.5">
+<label for="Ts"><span class="row">Temperatura de gases <b id="Ts_v"></b></span></label><input type="range" id="Ts" min="300" max="700" step="5" value="420">
+</div>
+<label for="Ta"><span class="row">Temperatura del aire <b id="Ta_v"></b></span></label><input type="range" id="Ta" min="270" max="320" value="300">
+</fieldset>
+
+<fieldset><legend>Meteorología</legend>
+<label for="u10"><span class="row">Viento a 10 m <b id="u10_v"></b></span></label><input type="range" id="u10" min="1" max="15" step="0.5" value="3">
+<label>Clase de estabilidad</label>
+<div class="seg" id="modo"><button data-v="auto" aria-pressed="true">Estimar</button><button data-v="manual" aria-pressed="false">Elegir</button></div>
+<div id="autoBox">
+<div class="seg" id="periodo"><button data-v="dia" aria-pressed="true">Día</button><button data-v="noche" aria-pressed="false">Noche</button></div>
+<div id="radBox"><label for="rad">Radiación solar</label>
+<select id="rad"><option value="fuerte">Fuerte</option><option value="moderada" selected>Moderada</option><option value="debil">Débil</option></select></div>
+<div id="nubBox" hidden><label for="nub"><span class="row">Cielo cubierto <b id="nub_v"></b></span></label><input type="range" id="nub" min="0" max="8" value="2"></div>
+</div>
+<div id="manBox" hidden><label for="clase">Clase</label>
+<select id="clase"><option value="A">A · muy inestable</option><option value="B">B · inestable</option><option value="C">C · ligeramente inestable</option><option value="D" selected>D · neutra</option><option value="E">E · ligeramente estable</option><option value="F">F · estable</option></select></div>
+<label>Terreno</label>
+<div class="seg" id="terreno"><button data-v="rural" aria-pressed="true">Rural</button><button data-v="urbano" aria-pressed="false">Urbano</button></div>
+<label class="check"><input type="checkbox" id="usezi"> Capa de mezcla (inversión)</label>
+<div id="ziBox" hidden><label for="zi"><span class="row">Altura de la capa <b id="zi_v"></b></span></label><input type="range" id="zi" min="100" max="3000" step="50" value="800"></div>
+</fieldset>
+
+<fieldset><legend>Receptores y dominio</legend>
+<label for="zr"><span class="row">Altura del receptor <b id="zr_v"></b></span></label><input type="range" id="zr" min="0" max="50" step="0.5" value="0">
+<label for="xmax"><span class="row">Distancia a modelar <b id="xmax_v"></b></span></label><input type="range" id="xmax" min="1" max="20" step="0.5" value="8">
+<label for="umbral">Valor de referencia (µg/m³)</label><input type="number" id="umbral" value="200" min="0" step="10">
+</fieldset>
+</aside>
+
+<main>
+<div class="cards" aria-live="polite">
+<div class="card"><small>Clase de estabilidad</small><strong id="c_clase">–</strong><span id="c_clase2"></span></div>
+<div class="card"><small>Altura efectiva final</small><strong id="c_H">–</strong><span id="c_H2"></span></div>
+<div class="card big"><small>Máximo en el eje</small><strong id="c_max">–</strong><span id="c_max2"></span></div>
+<div class="card" id="c_umb_box"><small>Valor de referencia</small><strong id="c_umb">–</strong><span id="c_umb2"></span></div>
+</div>
+
+<div class="tabs" role="tablist">
+<button role="tab" data-t="perfil" aria-selected="true">Perfil en el eje</button>
+<button role="tab" data-t="mapa" aria-selected="false">Mapa en planta</button>
+<button role="tab" data-t="corte" aria-selected="false">Corte vertical</button>
+<button role="tab" data-t="clases" aria-selected="false">Comparar clases</button>
+<button role="tab" data-t="viento" aria-selected="false">Sensibilidad al viento</button>
+</div>
+
+<section data-p="perfil"><div class="fig" id="f_perfil"><svg id="s_perfil" role="img" aria-label="Concentración en el eje frente a la distancia"></svg><div class="tip" id="tip"></div></div>
+<p class="note">Concentración en el eje de la pluma (y = 0) a la altura del receptor. Pasa el cursor por la curva para leer valores. Línea discontinua: valor de referencia.</p></section>
+<section data-p="mapa" hidden><div class="fig"><canvas id="cv_mapa" aria-label="Mapa en planta de la concentración"></canvas></div>
+<p class="note">Vista desde arriba, viento hacia la derecha. El contorno negro encierra la zona que supera el valor de referencia. Triángulo: la chimenea.</p></section>
+<section data-p="corte" hidden><div class="fig"><canvas id="cv_corte" aria-label="Corte vertical de la pluma"></canvas></div>
+<p class="note">Corte vertical en el eje, escala logarítmica (log₁₀ µg/m³). Línea blanca: altura efectiva H(x). Línea naranja: tapa de la capa de mezcla, si está activa.</p></section>
+<section data-p="clases" hidden><div class="fig"><svg id="s_clases" role="img" aria-label="Comparación de las seis clases de estabilidad"></svg></div>
+<div class="legend" id="lg_clases"></div>
+<div class="scroll" style="margin-top:12px"><table id="t_clases"></table></div></section>
+<section data-p="viento" hidden><div class="fig"><svg id="s_viento" role="img" aria-label="Sensibilidad a la velocidad del viento"></svg></div>
+<div class="legend" id="lg_viento"></div>
+<p class="note">Misma clase de estabilidad, distintos vientos a 10 m. El máximo más alto no siempre corresponde al viento más débil: con poco viento la pluma se eleva más.</p></section>
+</main>
+</div>
+
+<section class="band" style="background:var(--panel)">
+<h2>Cálculo paso a paso en un receptor</h2>
+<div class="steps">
+<div>
+<div class="recv">
+<div><label for="xr">Distancia x (m)</label><input type="number" id="xr" value="1000" min="10" step="50"></div>
+<div><label for="yr">Distancia transversal y (m)</label><input type="number" id="yr" value="0" step="10"></div>
+<div><label>Altura z (m)</label><input type="number" id="zr2" disabled></div>
+</div>
+<p class="note">La altura del receptor se ajusta en el panel de parámetros. Los valores intermedios se muestran redondeados; el cálculo usa todos los decimales.</p>
+<button class="btn" id="copyCsv" style="margin-top:14px">Copiar perfil en el eje (CSV)</button> <span class="note" id="copyMsg"></span>
+</div>
+<ol class="calc" id="calc"></ol>
+</div>
+</section>
+
+<section class="band about">
+<h2>Acerca del modelo</h2>
+<div class="eq"><math display="block"><mi>C</mi><mo>(</mo><mi>x</mi><mo>,</mo><mi>y</mi><mo>,</mo><mi>z</mi><mo>)</mo><mo>=</mo><mfrac><mi>Q</mi><mrow><mn>2</mn><mi>π</mi><mi>u</mi><msub><mi>σ</mi><mi>y</mi></msub><msub><mi>σ</mi><mi>z</mi></msub></mrow></mfrac><mi>exp</mi><mrow><mo>(</mo><mo>−</mo><mfrac><msup><mi>y</mi><mn>2</mn></msup><mrow><mn>2</mn><msubsup><mi>σ</mi><mi>y</mi><mn>2</mn></msubsup></mrow></mfrac><mo>)</mo></mrow><mrow><mo>[</mo><mi>exp</mi><mrow><mo>(</mo><mo>−</mo><mfrac><msup><mrow><mo>(</mo><mi>z</mi><mo>−</mo><mi>H</mi><mo>)</mo></mrow><mn>2</mn></msup><mrow><mn>2</mn><msubsup><mi>σ</mi><mi>z</mi><mn>2</mn></msubsup></mrow></mfrac><mo>)</mo></mrow><mo>+</mo><mi>exp</mi><mrow><mo>(</mo><mo>−</mo><mfrac><msup><mrow><mo>(</mo><mi>z</mi><mo>+</mo><mi>H</mi><mo>)</mo></mrow><mn>2</mn></msup><mrow><mn>2</mn><msubsup><mi>σ</mi><mi>z</mi><mn>2</mn></msubsup></mrow></mfrac><mo>)</mo></mrow><mo>]</mo></mrow></math></div>
+<ul>
+<li><b>Clase de estabilidad:</b> tabla de Pasquill-Turner con viento a 10 m, radiación (día) o nubosidad (noche).</li>
+<li><b>σy, σz:</b> fórmulas de Briggs (1973) para terreno rural o urbano; σz limitado a 5 000 m.</li>
+<li><b>Viento a la altura de la chimenea:</b> ley de potencia u = u₁₀ (h/10)ᵖ, con p según clase y terreno; mínimo 1 m/s.</li>
+<li><b>Altura efectiva:</b> H = hs + Δh, con la sobreelevación de Briggs por flotabilidad, creciente con x (ley de los 2/3) hasta su valor final.</li>
+<li><b>Capa de mezcla:</b> reflexiones múltiples entre suelo e inversión; cuando σz &gt; 1.6 zi se supone mezcla uniforme.</li>
+</ul>
+<p><b>Supuestos y límites:</b> emisión y viento constantes, terreno plano, sin reacciones químicas ni depósito. Resultados del orden de promedios de 10 a 60 minutos. Poco confiable con viento menor a 1 m/s, a menos de 100 m o más allá de 10–20 km. Herramienta didáctica y de tamizaje: no sustituye a modelos regulatorios como AERMOD.</p>
+<footer>Fuentes: Turner, D. B. (1970) <i>Workbook of Atmospheric Dispersion Estimates</i>, EPA AP-26; Briggs, G. A. (1973) ATDL File No. 79; Hanna, Briggs y Hosker (1982) <i>Handbook on Atmospheric Diffusion</i>; Stockie, J. M. (2011) <i>SIAM Review</i> 53(2). Elaborado por Francisco Javier Vázquez Morales, MGRyCC, UNICACH.</footer>
+</section>
+
+<script>
+{
+const $=id=>document.getElementById(id);
+const CL=["A","B","C","D","E","F"];
+const COL={A:"#d7191c",B:"#f07c22",C:"#c9a100",D:"#1a9641",E:"#2c7bb6",F:"#5e3c99"};
+const st={modo:"auto",periodo:"dia",terreno:"rural",tab:"perfil"};
+
+/* ---------- modelo ---------- */
+function claseEst(u,per,rad,nubOct){
+  const k=u<2?0:u<3?1:u<5?2:u<6?3:4;
+  if(per==="dia") return {fuerte:"AABCC",moderada:"ABBCD",debil:"BCCDD"}[rad][k];
+  return (nubOct>=4?"EEDDD":"FFEDD")[k];
+}
+function sig(x,c,t){
+  let sy,sz;
+  if(t==="rural"){
+    sy={A:.22,B:.16,C:.11,D:.08,E:.06,F:.04}[c]*x/Math.sqrt(1+1e-4*x);
+    sz={A:.2*x,B:.12*x,C:.08*x/Math.sqrt(1+2e-4*x),D:.06*x/Math.sqrt(1+1.5e-3*x),E:.03*x/(1+3e-4*x),F:.016*x/(1+3e-4*x)}[c];
+  }else{
+    sy=({A:.32,B:.32,C:.22,D:.16,E:.11,F:.11}[c])*x/Math.sqrt(1+4e-4*x);
+    sz={A:.24*x*Math.sqrt(1+1e-3*x),B:.24*x*Math.sqrt(1+1e-3*x),C:.2*x,D:.14*x/Math.sqrt(1+3e-4*x),E:.08*x/Math.sqrt(1+1.5e-3*x),F:.08*x/Math.sqrt(1+1.5e-3*x)}[c];
+  }
+  return [sy,Math.min(sz,5000)];
+}
+function vientoH(u10,h,c,t){
+  const p=(t==="rural"?{A:.07,B:.07,C:.1,D:.15,E:.35,F:.55}:{A:.15,B:.15,C:.2,D:.25,E:.3,F:.3})[c];
+  return Math.max(u10*Math.pow(Math.max(h,10)/10,p),1);
+}
+function flot(P){return 9.81*P.vs*P.d*P.d*(P.Ts-P.Ta)/(4*P.Ts)}
+function dhFinal(P,u,c){
+  const F=flot(P); if(!P.rise||F<=0) return 0;
+  if(c==="E"||c==="F"){const s=9.81/P.Ta*(c==="E"?.02:.035);return 2.6*Math.cbrt(F/(u*s))}
+  return F<55?21.425*Math.pow(F,.75)/u:38.71*Math.pow(F,.6)/u;
+}
+function dhX(x,P,u,c){
+  const F=flot(P); if(!P.rise||F<=0) return 0;
+  return Math.min(1.6*Math.cbrt(F)*Math.pow(x,2/3)/u,dhFinal(P,u,c));
+}
+/* devuelve µg/m³ y, opcionalmente, los términos intermedios */
+function conc(x,y,z,P,c,u10,det){
+  x=Math.max(x,1);
+  const u=vientoH(u10??P.u10,P.hs,c,P.terreno),H=P.hs+dhX(x,P,u,c);
+  const [sy,sz]=sig(x,c,P.terreno);
+  const ty=Math.exp(-(y*y)/(2*sy*sy));
+  let tz=Math.exp(-((z-H)**2)/(2*sz*sz))+Math.exp(-((z+H)**2)/(2*sz*sz)),mix=false;
+  if(P.zi<Infinity){
+    for(let n=1;n<=3;n++){const a=2*n*P.zi;
+      tz+=Math.exp(-((z-H-a)**2)/(2*sz*sz))+Math.exp(-((z+H-a)**2)/(2*sz*sz))+Math.exp(-((z-H+a)**2)/(2*sz*sz))+Math.exp(-((z+H+a)**2)/(2*sz*sz));}
+    if(sz>1.6*P.zi){tz=Math.sqrt(2*Math.PI)*sz/P.zi;mix=true}
+  }
+  const pre=P.Q/(2*Math.PI*u*sy*sz),C=pre*ty*tz*1e6;
+  return det?{u,H,dh:H-P.hs,sy,sz,pre,ty,tz,C,mix}:C;
+}
+
+/* ---------- lectura de controles ---------- */
+const sliders={hs:v=>v+" m",vs:v=>v+" m/s",d:v=>v+" m",Ts:v=>v+" K",Ta:v=>v+" K",u10:v=>v+" m/s",nub:v=>v+"/8",zi:v=>v+" m",zr:v=>v+" m",xmax:v=>v+" km"};
+function params(){
+  const g=id=>parseFloat($(id).value);
+  const P={Q:Math.max(g("Q")||0,0),hs:g("hs"),vs:g("vs"),d:g("d"),Ts:g("Ts"),Ta:g("Ta"),u10:g("u10"),
+    rise:$("rise").checked,terreno:st.terreno,zi:$("usezi").checked?g("zi"):Infinity,zr:g("zr"),xmax:g("xmax")*1000,umbral:Math.max(g("umbral")||0,0)};
+  P.clase=st.modo==="manual"?$("clase").value:claseEst(P.u10,st.periodo,$("rad").value,g("nub"));
+  return P;
+}
+const fmt=(v,d=1)=>Number(v).toLocaleString("es-MX",{maximumFractionDigits:d,minimumFractionDigits:0});
+const fmtm=v=>v>=1000?fmt(v/1000,v>=1e4?0:1)+" km":fmt(v,0)+" m";
+const sci=v=>{if(v===0)return"0";const e=Math.floor(Math.log10(Math.abs(v)));if(e>=-2&&e<4)return fmt(v,4);return fmt(v/10**e,3)+"×10"+String(e).replace("-","⁻").replace(/\d/g,d=>"⁰¹²³⁴⁵⁶⁷⁸⁹"[d])};
+const logspace=(a,b,n)=>Array.from({length:n},(_,i)=>10**(Math.log10(a)+(Math.log10(b)-Math.log10(a))*i/(n-1)));
+
+/* ---------- gráfica de líneas SVG ---------- */
+function ticksLog(a,b){const t=[];for(let e=Math.floor(Math.log10(a));e<=Math.ceil(Math.log10(b));e++)for(const m of [1,2,5]){const v=m*10**e;if(v>=a&&v<=b)t.push(v)}return t}
+function nice(max){const e=10**Math.floor(Math.log10(max||1)),f=max/e,s=f<=1.5?.25:f<=3?.5:f<=7?1:2;const step=s*e,t=[];for(let v=0;v<=max*1.0001;v+=step)t.push(v);return t}
+function lineChart(svg,series,o){
+  const W=svg.clientWidth,H=svg.clientHeight;if(!W||!H)return null;
+  const narrow=W<520,m={l:narrow?48:66,r:14,t:16,b:narrow?36:46};
+  const xa=o.xmin,xb=o.xmax,ymax=Math.max(o.ymax||0,...series.flatMap(s=>s.ys))*1.1||1;
+  const X=v=>m.l+(Math.log10(v)-Math.log10(xa))/(Math.log10(xb)-Math.log10(xa))*(W-m.l-m.r);
+  const Y=v=>H-m.b-(v/ymax)*(H-m.t-m.b);
+  const ink=getComputedStyle(document.body).color;
+  let g=`<g font-size="${narrow?11:13}" fill="${ink}" font-family="Public Sans,sans-serif">`;
+  for(const v of nice(ymax/1.1*1.05)){g+=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${ink}" stroke-opacity=".12"/><text x="${m.l-6}" y="${Y(v)+4}" text-anchor="end">${fmt(v,v<10?1:0)}</text>`}
+  const xt=ticksLog(xa,xb).filter((v,i,a)=>!narrow||[1,5].includes(+String(v)[0])||a.length<6);
+  for(const v of xt){g+=`<line x1="${X(v)}" x2="${X(v)}" y1="${m.t}" y2="${H-m.b}" stroke="${ink}" stroke-opacity=".08"/><text x="${X(v)}" y="${H-m.b+16}" text-anchor="middle">${v>=1000?fmt(v/1000,1)+" km":fmt(v,0)}</text>`}
+  if(!narrow)g+=`<text x="${(m.l+W-m.r)/2}" y="${H-6}" text-anchor="middle" fill-opacity=".75">Distancia viento abajo (escala logarítmica)</text><text transform="translate(14 ${(m.t+H-m.b)/2}) rotate(-90)" text-anchor="middle" fill-opacity=".75">µg/m³</text>`;
+  g+="</g>";
+  if(o.umbral>0&&o.umbral<ymax)g+=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(o.umbral)}" y2="${Y(o.umbral)}" stroke="${ink}" stroke-dasharray="6 5" stroke-width="1.5"/>`;
+  for(const s of series){
+    const d=s.xs.map((x,i)=>(i?"L":"M")+X(x).toFixed(1)+","+Y(s.ys[i]).toFixed(1)).join("");
+    if(s.fill)g+=`<path d="${d}L${X(s.xs.at(-1))},${Y(0)}L${X(s.xs[0])},${Y(0)}Z" fill="${s.color}" fill-opacity=".10"/>`;
+    g+=`<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${s.w||2.5}" stroke-linejoin="round"/>`;
+  }
+  if(o.mark){const s=series[0],i=s.ys.indexOf(Math.max(...s.ys)),cx=X(s.xs[i]),cy=Y(s.ys[i]),right=cx<W*.65;
+    g+=`<circle cx="${cx}" cy="${cy}" r="6" fill="${s.color}" stroke="var(--card)" stroke-width="2"/><text x="${cx+(right?12:-12)}" y="${cy-10}" text-anchor="${right?"start":"end"}" font-size="14" font-weight="600" fill="${ink}" font-family="Public Sans,sans-serif">${fmt(s.ys[i])} µg/m³ a ${fmtm(s.xs[i])}</text>`}
+  g+=`<line id="hair" y1="${m.t}" y2="${H-m.b}" stroke="${ink}" stroke-opacity=".5" visibility="hidden"/>`;
+  svg.setAttribute("viewBox",`0 0 ${W} ${H}`);svg.innerHTML=g;
+  return {X,Y,m,W,H,inv:px=>10**(Math.log10(xa)+(px-m.l)/(W-m.l-m.r)*(Math.log10(xb)-Math.log10(xa)))};
+}
+
+/* ---------- mapas en canvas ---------- */
+const YLORRD=[[255,255,204],[255,237,160],[254,217,118],[254,178,76],[253,141,60],[252,78,42],[227,26,28],[189,0,38],[128,0,38]];
+const VIR=[[68,1,84],[72,40,120],[62,74,137],[49,104,142],[38,130,142],[31,158,137],[53,183,121],[109,205,89],[180,222,44],[253,231,37]];
+function cmap(p,t){t=Math.min(Math.max(t,0),1)*(p.length-1);const i=Math.min(Math.floor(t),p.length-2),f=t-i;return p[i].map((a,k)=>a+(p[i+1][k]-a)*f)}
+function canvasSetup(cv){const r=devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;if(!W||!H)return null;cv.width=W*r;cv.height=H*r;const ctx=cv.getContext("2d");ctx.setTransform(r,0,0,r,0,0);ctx.clearRect(0,0,W,H);return{ctx,W,H}}
+function axesText(ctx,W,H,m,xr,yr,xl,yl,yfmt){
+  const ink=getComputedStyle(document.body).color;ctx.fillStyle=ink;ctx.strokeStyle=ink;ctx.font="13px Public Sans,sans-serif";
+  ctx.textAlign="center";for(const v of nice(xr[1]).filter(v=>v>=xr[0])){const px=m.l+(v-xr[0])/(xr[1]-xr[0])*(W-m.l-m.r);ctx.fillText(v>=1000?fmt(v/1000,1)+" km":fmt(v,0),px,H-m.b+18)}
+  ctx.textAlign="right";const span=yr[1]-yr[0],nt=nice(span),st0=nt[1]||span;for(let val=Math.ceil(yr[0]/st0)*st0;val<=yr[1]+1e-6;val+=st0){const py=H-m.b-((val-yr[0])/span)*(H-m.t-m.b);ctx.fillText(yfmt(val),m.l-6,py+4)}
+  if(W>=520){ctx.textAlign="center";ctx.globalAlpha=.75;ctx.fillText(xl,(m.l+W-m.r)/2,H-8);ctx.save();ctx.translate(14,(m.t+H-m.b)/2);ctx.rotate(-Math.PI/2);ctx.fillText(yl,0,0);ctx.restore();ctx.globalAlpha=1}
+}
+function colorBar(ctx,W,H,m,pal,lo,hi,lab){
+  const x=W-m.r+18,h=H-m.t-m.b;for(let i=0;i<h;i++){const c=cmap(pal,1-i/h);ctx.fillStyle=`rgb(${c})`;ctx.fillRect(x,m.t+i,14,1)}
+  const ink=getComputedStyle(document.body).color;ctx.fillStyle=ink;ctx.textAlign="left";ctx.font="12px Public Sans,sans-serif";
+  ctx.fillText(lab(hi),x+18,m.t+10);ctx.fillText(lab((lo+hi)/2),x+18,m.t+h/2+4);ctx.fillText(lab(lo),x+18,m.t+h)
+}
+function drawMapa(P){
+  const s=canvasSetup($("cv_mapa"));if(!s)return;const{ctx,W,H}=s;
+  const m={l:W<520?52:72,r:W<520?60:80,t:14,b:W<520?30:44},pw=Math.max(W-m.l-m.r,10),ph=Math.max(H-m.t-m.b,10);
+  const nx=Math.min(320,Math.floor(pw)),ny=Math.min(200,Math.floor(ph)),ylim=Math.max(300,.18*P.xmax);
+  const v=new Float32Array(nx*ny);let mx=0;
+  for(let j=0;j<ny;j++){const y=ylim-(2*ylim)*j/(ny-1);for(let i=0;i<nx;i++){const x=20+(P.xmax-20)*i/(nx-1);const c=conc(x,y,P.zr,P,P.clase);v[j*nx+i]=c;if(c>mx)mx=c}}
+  const img=ctx.createImageData(nx,ny);
+  for(let k=0;k<nx*ny;k++){const c=cmap(YLORRD,v[k]/(mx||1));const i=k%nx,j=(k-i)/nx;let edge=false;
+    if(P.umbral>0&&v[k]>P.umbral){edge=(i===0||v[k-1]<=P.umbral)||(i===nx-1||v[k+1]<=P.umbral)||(j===0||v[k-nx]<=P.umbral)||(j===ny-1||v[k+nx]<=P.umbral)}
+    img.data.set(edge?[20,20,20,255]:[c[0],c[1],c[2],255],k*4)}
+  const tmp=document.createElement("canvas");tmp.width=nx;tmp.height=ny;tmp.getContext("2d").putImageData(img,0,0);
+  ctx.imageSmoothingEnabled=true;ctx.drawImage(tmp,m.l,m.t,pw,ph);
+  const py0=m.t+ph/2;ctx.fillStyle=getComputedStyle(document.body).color;ctx.beginPath();ctx.moveTo(m.l+2,py0-7);ctx.lineTo(m.l+14,py0);ctx.lineTo(m.l+2,py0+7);ctx.fill();
+  axesText(ctx,W,H,m,[0,P.xmax],[-ylim,ylim],"x viento abajo","y transversal (m)",v=>fmt(v,0));
+  colorBar(ctx,W,H,m,YLORRD,0,mx,v=>fmt(v,0));
+}
+function drawCorte(P){
+  const s=canvasSetup($("cv_corte"));if(!s)return;const{ctx,W,H}=s;
+  const m={l:W<520?52:72,r:W<520?60:80,t:14,b:W<520?30:44},pw=Math.max(W-m.l-m.r,10),ph=Math.max(H-m.t-m.b,10);
+  const u=vientoH(P.u10,P.hs,P.clase,P.terreno),Hf=P.hs+dhFinal(P,u,P.clase);
+  let ztop=Math.max(300,4*Hf);if(P.zi<Infinity)ztop=Math.max(ztop,P.zi*1.1);
+  const nx=Math.min(300,Math.floor(pw)),nz=Math.min(200,Math.floor(ph)),v=new Float32Array(nx*nz);let mx=0;
+  for(let j=0;j<nz;j++){const z=ztop*(1-j/(nz-1));for(let i=0;i<nx;i++){const x=20+(P.xmax-20)*i/(nx-1);const c=Math.log10(Math.max(conc(x,0,z,P,P.clase),1));v[j*nx+i]=c;if(c>mx)mx=c}}
+  const img=ctx.createImageData(nx,nz);for(let k=0;k<nx*nz;k++){const c=cmap(VIR,v[k]/(mx||1));img.data.set([c[0],c[1],c[2],255],k*4)}
+  const tmp=document.createElement("canvas");tmp.width=nx;tmp.height=nz;tmp.getContext("2d").putImageData(img,0,0);ctx.drawImage(tmp,m.l,m.t,pw,ph);
+  const X=x=>m.l+x/P.xmax*pw,Z=z=>m.t+ph-z/ztop*ph;
+  ctx.setLineDash([7,5]);ctx.lineWidth=2;ctx.strokeStyle="#fff";ctx.beginPath();
+  for(let i=0;i<=120;i++){const x=20+(P.xmax-20)*i/120,h=P.hs+dhX(x,P,u,P.clase);i?ctx.lineTo(X(x),Z(h)):ctx.moveTo(X(x),Z(h))}ctx.stroke();
+  if(P.zi<Infinity){ctx.strokeStyle="#fb8a4c";ctx.setLineDash([]);ctx.beginPath();ctx.moveTo(m.l,Z(P.zi));ctx.lineTo(m.l+pw,Z(P.zi));ctx.stroke()}
+  ctx.setLineDash([]);
+  axesText(ctx,W,H,m,[0,P.xmax],[0,ztop],"x viento abajo","Altura z (m)",v=>fmt(v,0));
+  colorBar(ctx,W,H,m,VIR,0,mx,v=>"10^"+fmt(v,1));
+}
+
+/* ---------- actualización ---------- */
+let last=null;
+function update(){
+  for(const k in sliders)$(k+"_v").textContent=sliders[k]($(k).value);
+  $("riseBox").hidden=!$("rise").checked;$("ziBox").hidden=!$("usezi").checked;
+  $("autoBox").hidden=st.modo!=="auto";$("manBox").hidden=st.modo!=="manual";
+  $("radBox").hidden=st.periodo!=="dia";$("nubBox").hidden=st.periodo!=="noche";
+  const P=params();last=P;$("zr2").value=P.zr;
+  const xs=logspace(50,P.xmax,500),ys=xs.map(x=>conc(x,0,P.zr,P,P.clase));
+  const i=ys.indexOf(Math.max(...ys)),u=vientoH(P.u10,P.hs,P.clase,P.terreno);
+  const desc={A:"muy inestable",B:"inestable",C:"ligeramente inestable",D:"neutra",E:"ligeramente estable",F:"estable"};
+  $("c_clase").textContent=P.clase;$("c_clase2").textContent=desc[P.clase]+(st.modo==="auto"?" · estimada":"");
+  $("c_H").textContent=fmt(P.hs+dhFinal(P,u,P.clase),0)+" m";$("c_H2").textContent="viento en la chimenea "+fmt(u,2)+" m/s";
+  $("c_max").textContent=fmt(ys[i])+" µg/m³";$("c_max2").textContent="a "+fmtm(xs[i])+(i===xs.length-1?" (límite del dominio)":"");
+  const over=xs.filter((x,k)=>ys[k]>P.umbral);
+  $("c_umb_box").classList.toggle("alert",over.length>0);
+  $("c_umb").textContent=over.length?"Se supera":"No se supera";
+  $("c_umb2").textContent=over.length?"entre "+fmtm(over[0])+" y "+fmtm(over.at(-1)):"referencia "+fmt(P.umbral,0)+" µg/m³";
+  last.prof={xs,ys};
+  render();steps();
+}
+function render(){
+  const P=last;if(!P)return;
+  if(st.tab==="perfil"){chartP=lineChart($("s_perfil"),[{xs:P.prof.xs,ys:P.prof.ys,color:COL[P.clase],fill:true,w:3}],{xmin:50,xmax:P.xmax,umbral:P.umbral,ymax:P.umbral*1.02,mark:true})}
+  if(st.tab==="mapa")drawMapa(P);
+  if(st.tab==="corte")drawCorte(P);
+  if(st.tab==="clases"){
+    const xs=logspace(50,P.xmax,300),ser=CL.map(c=>({xs,ys:xs.map(x=>conc(x,0,P.zr,P,c)),color:COL[c],w:c===P.clase?4:2}));
+    lineChart($("s_clases"),ser,{xmin:50,xmax:P.xmax,umbral:P.umbral});
+    $("lg_clases").innerHTML=CL.map(c=>`<span><i style="background:${COL[c]}"></i>Clase ${c}${c===P.clase?" (actual)":""}</span>`).join("");
+    $("t_clases").innerHTML=`<tr><th>Clase</th><th class="n">Máximo (µg/m³)</th><th class="n">Distancia</th></tr>`+ser.map((s,k)=>{const j=s.ys.indexOf(Math.max(...s.ys));return`<tr><td>${CL[k]}</td><td class="n">${fmt(s.ys[j])}</td><td class="n">${j===xs.length-1?"más allá de "+fmtm(xs[j]):fmtm(xs[j])}</td></tr>`}).join("");
+  }
+  if(st.tab==="viento"){
+    const vs=[1,2,3,5,8,12],pal=["#c2410c","#e08a2c","#9a8a00","#1a9641","#1f6fa8","#5e3c99"],xs=logspace(50,P.xmax,300);
+    lineChart($("s_viento"),vs.map((v,k)=>({xs,ys:xs.map(x=>conc(x,0,P.zr,P,P.clase,v)),color:pal[k]})),{xmin:50,xmax:P.xmax,umbral:P.umbral});
+    $("lg_viento").innerHTML=vs.map((v,k)=>`<span><i style="background:${pal[k]}"></i>${v} m/s</span>`).join("");
+  }
+}
+function steps(){
+  const P=last,x=Math.max(parseFloat($("xr").value)||1000,1),y=parseFloat($("yr").value)||0,z=P.zr,c=P.clase;
+  const d=conc(x,y,z,P,c,undefined,true),F=flot(P),p=(P.terreno==="rural"?{A:.07,B:.07,C:.1,D:.15,E:.35,F:.55}:{A:.15,B:.15,C:.2,D:.25,E:.3,F:.3})[c];
+  const L=[];
+  L.push(["Clase de estabilidad",`${c} (${st.modo==="auto"?"tabla de Turner con u₁₀ = "+fmt(P.u10)+" m/s":"elegida"})`]);
+  L.push(["Viento a la altura de la chimenea",`u = ${fmt(P.u10)} · (${fmt(P.hs,0)}/10)^${p} = ${fmt(d.u,2)} m/s`]);
+  if(P.rise){L.push(["Flujo de flotabilidad",`F = 9.81·${fmt(P.vs)}·${fmt(P.d)}²·(${fmt(P.Ts,0)}−${fmt(P.Ta,0)}) / (4·${fmt(P.Ts,0)}) = ${fmt(F,2)} m⁴/s³`]);
+    L.push(["Sobreelevación a esta distancia",`Δh = ${fmt(d.dh,1)} m (final ${fmt(dhFinal(P,d.u,c),1)} m) → H = ${fmt(P.hs,0)} + ${fmt(d.dh,1)} = ${fmt(d.H,1)} m`])}
+  else L.push(["Altura efectiva",`H = hs = ${fmt(d.H,1)} m`]);
+  L.push([`Coeficientes de Briggs (${P.terreno}) a x = ${fmt(x,0)} m`,`σy = ${fmt(d.sy,1)} m   σz = ${fmt(d.sz,1)} m`]);
+  L.push(["Factor de dilución",`Q / (2π·u·σy·σz) = ${fmt(P.Q,2)} / (2π·${fmt(d.u,2)}·${fmt(d.sy,1)}·${fmt(d.sz,1)}) = ${sci(d.pre)} g/m³`]);
+  L.push(["Término transversal",`exp(−y²/2σy²) = exp(−${fmt(y,0)}²/(2·${fmt(d.sy,1)}²)) = ${fmt(d.ty,4)}`]);
+  L.push(["Término vertical con reflexión"+(P.zi<Infinity?" y capa de mezcla":""),d.mix?`mezcla uniforme bajo zi: √(2π)·σz/zi = ${fmt(d.tz,4)}`:`exp(−(z−H)²/2σz²) + exp(−(z+H)²/2σz²) = ${fmt(d.tz,4)}`]);
+  $("calc").innerHTML=L.map(([a,b])=>`<li>${a}<code>${b}</code></li>`).join("")+`<li class="res">Concentración en x = ${fmt(x,0)} m, y = ${fmt(y,0)} m, z = ${fmt(z,1)} m<code>C = ${sci(d.pre)} · ${fmt(d.ty,4)} · ${fmt(d.tz,4)} = ${sci(d.C/1e6)} g/m³ = ${fmt(d.C,2)} µg/m³</code></li>`;
+}
+
+/* ---------- eventos ---------- */
+let raf=0;const sched=()=>{cancelAnimationFrame(raf);raf=requestAnimationFrame(update)};
+document.querySelectorAll("aside input,aside select").forEach(e=>e.addEventListener("input",sched));
+["xr","yr"].forEach(id=>$(id).addEventListener("input",()=>last&&steps()));
+function seg(id,key){$(id).addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;st[key]=b.dataset.v;$(id).querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b));sched()})}
+seg("modo","modo");seg("periodo","periodo");seg("terreno","terreno");
+function setSeg(id,v){$(id).querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.v===v))}
+document.querySelector(".tabs").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;st.tab=b.dataset.t;
+  document.querySelectorAll(".tabs button").forEach(x=>x.setAttribute("aria-selected",x===b));
+  document.querySelectorAll("main section[data-p]").forEach(s=>s.hidden=s.dataset.p!==st.tab);render()});
+const PRE={
+  ejemplo:{Q:50,hs:40,vs:12,d:1.5,Ts:420,Ta:300,u10:3,modo:"manual",clase:"D",terreno:"rural",usezi:false,zr:0,xmax:8},
+  tarde:{Q:50,hs:40,vs:12,d:1.5,Ts:420,Ta:303,u10:2.5,modo:"auto",periodo:"dia",rad:"fuerte",terreno:"rural",usezi:true,zi:1500,zr:0,xmax:5},
+  noche:{Q:50,hs:40,vs:12,d:1.5,Ts:420,Ta:293,u10:2,modo:"auto",periodo:"noche",nub:1,terreno:"rural",usezi:false,zr:0,xmax:20}};
+$("presets").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;const p=PRE[b.dataset.p];
+  for(const k of ["Q","hs","vs","d","Ts","Ta","u10","zi","zr","xmax","nub","clase","rad"])if(p[k]!==undefined)$(k).value=p[k];
+  $("usezi").checked=!!p.usezi;$("rise").checked=true;
+  st.modo=p.modo;st.terreno=p.terreno;if(p.periodo)st.periodo=p.periodo;
+  setSeg("modo",st.modo);setSeg("terreno",st.terreno);setSeg("periodo",st.periodo);update()});
+let chartP=null;
+$("s_perfil").addEventListener("pointermove",e=>{if(!chartP||!last)return;const r=e.currentTarget.getBoundingClientRect(),px=e.clientX-r.left;
+  const tip=$("tip"),hair=$("s_perfil").querySelector("#hair");if(px<chartP.m.l||px>chartP.W-chartP.m.r){tip.style.display="none";hair&&hair.setAttribute("visibility","hidden");return}
+  const x=chartP.inv(px),c=conc(x,0,last.zr,last,last.clase);
+  hair.setAttribute("x1",px);hair.setAttribute("x2",px);hair.setAttribute("visibility","visible");
+  tip.style.display="block";tip.textContent=`x = ${fmtm(x)} · C = ${fmt(c)} µg/m³`;
+  tip.style.left=Math.min(px+12,r.width-tip.offsetWidth-6)+"px";tip.style.top=Math.max(chartP.Y(c)-34,6)+"px"});
+$("s_perfil").addEventListener("pointerleave",()=>{$("tip").style.display="none"});
+$("copyCsv").addEventListener("click",async()=>{if(!last)return;const csv="x_m,C_ugm3\n"+last.prof.xs.map((x,i)=>x.toFixed(1)+","+last.prof.ys[i].toFixed(4)).join("\n");
+  try{await navigator.clipboard.writeText(csv);$("copyMsg").textContent="Copiado: pégalo en Excel o en R."}catch(err){$("copyMsg").textContent="El navegador no permitió copiar."}});
+const ro=new ResizeObserver(()=>render());document.querySelectorAll(".fig").forEach(f=>ro.observe(f));
+new MutationObserver(()=>render()).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+update();
+}
+</script>
+</body>
+</html>
